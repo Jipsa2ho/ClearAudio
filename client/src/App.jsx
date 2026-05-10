@@ -29,8 +29,8 @@ function App() {
   const [originalDuration, setOriginalDuration] = useState('00:00.000');
   const [processedTime, setProcessedTime] = useState('00:00.000');
   const [processedDuration, setProcessedDuration] = useState('00:00.000');
-  const [zoom, setZoom] = useState(50);
-  const [zoomProcessed, setZoomProcessed] = useState(50);
+  const [zoom, setZoom] = useState(0);
+  const [zoomProcessed, setZoomProcessed] = useState(0);
 
   const [threshold, setThreshold] = useState(-40);
   const [minSilence, setMinSilence] = useState(0.5);
@@ -86,8 +86,7 @@ function App() {
         barGap: 2,
         barRadius: 3,
         responsive: true,
-        fillParent: false,
-        minPxPerSec: 50,
+        minPxPerSec: 0,
         plugins: [
           RegionsPlugin.create(),
           TimelinePlugin.create({ container: originalTimelineRef.current, height: 20 }),
@@ -148,8 +147,7 @@ function App() {
         barGap: 2,
         barRadius: 3,
         responsive: true,
-        fillParent: false,
-        minPxPerSec: 50,
+        minPxPerSec: 0,
         plugins: [
           TimelinePlugin.create({ container: processedTimelineRef.current, height: 20 }),
           MinimapPlugin.create({
@@ -256,8 +254,24 @@ function App() {
   const handleZoom = (direction, isProcessed = false) => {
     const ws = isProcessed ? wsProcessed.current : wsOriginal.current;
     if (!ws) return;
+    
+    const duration = ws.getDuration();
+    const containerWidth = ws.getWrapper().clientWidth;
+    const fitZoom = duration > 0 ? containerWidth / duration : 50;
+    
     const currentZoom = isProcessed ? zoomProcessed : zoom;
-    let newZoom = direction === 'in' ? currentZoom * 1.5 : direction === 'out' ? currentZoom / 1.5 : 50;
+    let actualCurrentZoom = currentZoom === 0 ? fitZoom : currentZoom;
+    
+    let newZoom;
+    if (direction === 'in') {
+      newZoom = actualCurrentZoom * 1.5;
+    } else if (direction === 'out') {
+      newZoom = actualCurrentZoom / 1.5;
+      if (newZoom <= fitZoom * 1.05) newZoom = 0; // Snap to fit if zooming out close to fit
+    } else {
+      newZoom = 0; // reset
+    }
+    
     isProcessed ? setZoomProcessed(newZoom) : setZoom(newZoom);
     ws.zoom(newZoom);
   };
