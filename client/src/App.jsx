@@ -11,6 +11,21 @@ import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js';
 import MinimapPlugin from 'wavesurfer.js/dist/plugins/minimap.js';
 import './App.css';
 
+const TooltipInfo = ({ text }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div 
+      className="tooltip-wrapper"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onClick={() => setShow(!show)}
+    >
+      <Info size={14} className="info-icon" />
+      {show && <div className="tooltip-text">{text}</div>}
+    </div>
+  );
+};
+
 /**
  * CLEAN CUT AUDIO EDITOR - FRONTEND
  * Mockup-based 3-Column UI with Auto-Processing
@@ -413,21 +428,21 @@ function App() {
           <div className="card" style={{opacity: file ? 1 : 0.5, pointerEvents: file ? 'auto' : 'none'}}>
             <h2 className="section-title"><Scissors size={18} /> 3. 구간 삭제 (자동 & 수동)</h2>
             <div className="input-row">
-              <label>무음 기준 볼륨 dB <Info size={14} className="info-icon"/></label>
+              <label>무음 기준 볼륨 dB <TooltipInfo text="이 소리 크기보다 작으면 '잡음(무음)'으로 간주해서 지워버립니다. 숫자가 작을수록(-50에 가까울수록) 정말 작은 소리만 지우고, 클수록(-30에 가까울수록) 웬만한 소리도 다 지웁니다."/></label>
               <div className="input-with-unit">
                 <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!file} />
                 <span className="unit">dB</span>
               </div>
             </div>
             <div className="input-row">
-              <label>최소 무음 길이 초 <Info size={14} className="info-icon"/></label>
+              <label>최소 무음 길이 초 <TooltipInfo text="지정된 시간(예: 0.5초) 이상 연속으로 조용할 때만 무음으로 판단해 지웁니다. 너무 짧은 숨소리나 말 사이사이의 자연스러운 틈까지 다 잘려나가는 것을 막아줍니다."/></label>
               <div className="input-with-unit">
                 <input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} disabled={!file} />
                 <span className="unit">초</span>
               </div>
             </div>
             <div className="input-row">
-              <label>말 앞뒤 여백 초 <Info size={14} className="info-icon"/></label>
+              <label>말 앞뒤 여백 초 <TooltipInfo text="말소리가 시작되기 직전과 끝난 직후에 약간의 여유(여백) 공간을 남겨둡니다. 여백이 0이면 말이 너무 뚝뚝 끊겨 로봇처럼 들릴 수 있습니다."/></label>
               <div className="input-with-unit">
                 <input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} disabled={!file} />
                 <span className="unit">초</span>
@@ -526,21 +541,21 @@ function App() {
                 </div>
               </div>
               <div className="input-row">
-                <label>목표 음량 LUFS <Info size={14} className="info-icon"/></label>
+                <label>목표 음량 LUFS <TooltipInfo text="전체 영상의 평균 소리 크기(LUFS)를 맞춥니다. 유튜브는 보통 -14 LUFS가 가장 듣기 좋고 표준적인 크기입니다. 숫자가 클수록(-10 등) 전체 소리가 커집니다."/></label>
                 <div className="input-with-unit">
                   <input type="number" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} disabled={preset !== 'custom'} />
                   <span className="unit">LUFS</span>
                 </div>
               </div>
               <div className="input-row">
-                <label>트루피크 dB <Info size={14} className="info-icon"/></label>
+                <label>트루피크 dB <TooltipInfo text="소리가 순간적으로 너무 커져서 스피커에서 찢어지거나 깨지는(Peak) 현상을 막아주는 최고 한계선입니다. 보통 -1.0dB로 설정하면 안전합니다."/></label>
                 <div className="input-with-unit">
                   <input type="number" step="0.1" value={truePeak} onChange={(e) => setTruePeak(e.target.value)} disabled={preset !== 'custom'} />
                   <span className="unit">dB</span>
                 </div>
               </div>
               <div className="input-row mt-2" style={{justifyContent: 'space-between', width: '100%'}}>
-                <label>리미터 사용 <Info size={14} className="info-icon"/></label>
+                <label>리미터 사용 <TooltipInfo text="소리가 지정된 트루피크 한계선을 넘으려고 할 때, 소리가 깨지지 않도록 부드럽게 꾹 눌러주는 보호 장치입니다. 무조건 켜두는 것을 권장합니다."/></label>
                 <label className="toggle-switch">
                   <input type="checkbox" checked={limiterEnabled} onChange={(e) => setLimiterEnabled(e.target.checked)} disabled={preset !== 'custom'} />
                   <span className="slider"></span>
