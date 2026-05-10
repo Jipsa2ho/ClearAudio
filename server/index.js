@@ -208,7 +208,11 @@ app.post('/api/process', (req, res) => {
   // 1. Calculate what to keep
   const totalDuration = fileData.duration;
   const deleteRanges = mergeRanges(buildDeleteRanges(silenceSegments, manualDeleteRanges, parseFloat(padding), totalDuration));
-  const keepSegments = buildKeepSegments(deleteRanges, totalDuration);
+  const rawKeepSegments = buildKeepSegments(deleteRanges, totalDuration);
+  
+  // Filter out extremely short segments (e.g., < 0.05s) to prevent FFmpeg atrim errors from overlapping
+  const MIN_KEEP_DURATION = 0.05;
+  const keepSegments = rawKeepSegments.filter(s => s.end - s.start >= MIN_KEEP_DURATION);
 
   const outputId = crypto.randomUUID();
   const outputFilename = `processed-${outputId}.${outputFormat}`;
@@ -308,9 +312,21 @@ app.post('/api/export', (req, res) => {
   }
 
   command
-    .on('end', () => res.json({ success: true, filename: finalFilename, downloadUrl: `/downloads/${finalFilename}` }))
+    .on('end', () => res.json({ success: true, filename: finalFilename, downloadUrl: `/api/download/${finalFilename}` }))
     .on('error', (err) => res.status(500).json({ success: false, error: 'Export failed' }))
     .save(finalPath);
+});
+
+/**
+ * Force Download Route
+ */
+app.get('/api/download/:filename', (req, res) => {
+  const filePath = path.join(downloadDir, req.params.filename);
+  if (fs.existsSync(filePath)) {
+    res.download(filePath, req.params.filename);
+  } else {
+    res.status(404).send('File not found');
+  }
 });
 
 // Fallback for React Router (Single Page App)

@@ -609,13 +609,13 @@ function App() {
                 <label style={{fontSize:'0.85rem', color:'var(--text)', display:'block', marginBottom:'0.3rem'}}>음질</label>
                 <div className="quality-tabs">
                   <div className={`quality-tab ${exportQuality==='낮음'?'active':''}`} onClick={() => setExportQuality('낮음')}>
-                    <span>낮음</span><span>128 kbps</span>
+                    <span>낮음</span><span>{exportFormat === 'mp3' ? '128 kbps' : '16-bit 44.1kHz'}</span>
                   </div>
                   <div className={`quality-tab ${exportQuality==='보통'?'active':''}`} onClick={() => setExportQuality('보통')}>
-                    <span>보통</span><span>192 kbps</span>
+                    <span>보통</span><span>{exportFormat === 'mp3' ? '192 kbps' : '24-bit 44.1kHz'}</span>
                   </div>
                   <div className={`quality-tab ${exportQuality==='높음'?'active':''}`} onClick={() => setExportQuality('높음')}>
-                    <span>높음</span><span>320 kbps</span>
+                    <span>높음</span><span>{exportFormat === 'mp3' ? '320 kbps' : '24-bit 48kHz'}</span>
                   </div>
                 </div>
               </div>
