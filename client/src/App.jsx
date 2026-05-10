@@ -292,6 +292,7 @@ function App() {
   };
 
   const clearSelection = () => {
+    if (!wsOriginal.current) { setSelectedRange(null); return; }
     const regions = wsOriginal.current.plugins.find(p => p instanceof RegionsPlugin);
     if (regions) regions.getRegions().forEach(r => { if (!r.id.startsWith('silence-')) r.remove(); });
     setSelectedRange(null);
@@ -370,114 +371,107 @@ function App() {
             </div>
           </div>
 
-          {file && (
-            <div className="card">
-              <h2 className="section-title"><Scissors size={18} /> 3. 구간 삭제 (자동 & 수동)</h2>
-              <div className="input-row">
-                <label>무음 기준 볼륨 dB <Info size={14} className="info-icon"/></label>
-                <div className="input-with-unit">
-                  <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-                  <span className="unit">dB</span>
-                </div>
-              </div>
-              <div className="input-row">
-                <label>최소 무음 길이 초 <Info size={14} className="info-icon"/></label>
-                <div className="input-with-unit">
-                  <input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} />
-                  <span className="unit">초</span>
-                </div>
-              </div>
-              <div className="input-row">
-                <label>말 앞뒤 여백 초 <Info size={14} className="info-icon"/></label>
-                <div className="input-with-unit">
-                  <input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} />
-                  <span className="unit">초</span>
-                </div>
-              </div>
-
-              <div style={{height: '1px', background: 'var(--border)', margin: '1.5rem 0 1rem 0'}}></div>
-              
-              <p className="text-muted" style={{fontSize:'0.8rem', marginBottom:'1rem'}}>파형에서 드래그하여 수동으로 삭제할 구간을 지정할 수 있습니다.</p>
-              <div className="input-row">
-                <label style={{fontSize:'0.8rem'}}>선택 시작 시간</label>
-                <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.start) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
-              </div>
-              <div className="input-row">
-                <label style={{fontSize:'0.8rem'}}>선택 종료 시간</label>
-                <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.end) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
-              </div>
-              <div style={{display:'flex', gap:'0.5rem', marginTop:'1rem'}}>
-                <button className="btn btn-danger" style={{flex:1, justifyContent:'center'}} onClick={handleManualDelete} disabled={!selectedRange || statusType === 'busy'}><Trash2 size={14} /> 선택 구간 삭제</button>
-                <button className="btn btn-secondary" style={{flex:1, justifyContent:'center'}} onClick={clearSelection}>선택 해제</button>
+          <div className="card" style={{opacity: file ? 1 : 0.5, pointerEvents: file ? 'auto' : 'none'}}>
+            <h2 className="section-title"><Scissors size={18} /> 3. 구간 삭제 (자동 & 수동)</h2>
+            <div className="input-row">
+              <label>무음 기준 볼륨 dB <Info size={14} className="info-icon"/></label>
+              <div className="input-with-unit">
+                <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!file} />
+                <span className="unit">dB</span>
               </div>
             </div>
-          )}
+            <div className="input-row">
+              <label>최소 무음 길이 초 <Info size={14} className="info-icon"/></label>
+              <div className="input-with-unit">
+                <input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} disabled={!file} />
+                <span className="unit">초</span>
+              </div>
+            </div>
+            <div className="input-row">
+              <label>말 앞뒤 여백 초 <Info size={14} className="info-icon"/></label>
+              <div className="input-with-unit">
+                <input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} disabled={!file} />
+                <span className="unit">초</span>
+              </div>
+            </div>
+
+            <div style={{height: '1px', background: 'var(--border)', margin: '1.5rem 0 1rem 0'}}></div>
+            
+            <p className="text-muted" style={{fontSize:'0.8rem', marginBottom:'1rem'}}>파형에서 드래그하여 수동으로 삭제할 구간을 지정할 수 있습니다.</p>
+            <div className="input-row">
+              <label style={{fontSize:'0.8rem'}}>선택 시작 시간</label>
+              <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.start) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
+            </div>
+            <div className="input-row">
+              <label style={{fontSize:'0.8rem'}}>선택 종료 시간</label>
+              <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.end) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
+            </div>
+            <div style={{display:'flex', gap:'0.5rem', marginTop:'1rem'}}>
+              <button className="btn btn-danger" style={{flex:1, justifyContent:'center'}} onClick={handleManualDelete} disabled={!selectedRange || statusType === 'busy' || !file}><Trash2 size={14} /> 선택 구간 삭제</button>
+              <button className="btn btn-secondary" style={{flex:1, justifyContent:'center'}} onClick={clearSelection} disabled={!file}>선택 해제</button>
+            </div>
+          </div>
         </div>
 
         {/* CENTER COLUMN */}
-        <div className="col col-center" style={{gridColumn: file ? 'auto' : 'span 2'}}>
-          {file ? (
-            <>
-              <div className="card">
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
-                  <h2 className="section-title" style={{margin:0}}>2. 원본 오디오 파형</h2>
-                  <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{originalTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{originalDuration}</span></div>
-                </div>
-                
-                <div ref={originalTimelineRef} className="timeline-view"></div>
-                <div className="waveform-container">
-                  <div className="y-axis-guide">
-                    <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
-                  </div>
-                  <div ref={originalWaveformRef} className="waveform-view"></div>
-                </div>
-                <div ref={originalMinimapRef} className="minimap-view"></div>
-                
-                <div className="waveform-controls mt-4">
-                  <button className="btn btn-primary" onClick={() => wsOriginal.current?.playPause()}><Play size={16} /> 재생</button>
-                  <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()}><Pause size={16} /> 일시정지</button>
-                  <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('in')}><ZoomIn size={16} /> 확대</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('out')}><ZoomOut size={16} /> 축소</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('reset')}><RotateCcw size={16} /> 배율 초기화</button>
-                </div>
-              </div>
-
-              <div className="card">
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
-                  <h2 className="section-title" style={{margin:0}}>5. 처리된 오디오 파형</h2>
-                  <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{processedTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{processedDuration}</span></div>
-                </div>
-                
-                <div ref={processedTimelineRef} className="timeline-view"></div>
-                <div className="waveform-container" style={{borderColor: 'var(--success)'}}>
-                  <div className="y-axis-guide">
-                    <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
-                  </div>
-                  <div ref={processedWaveformRef} className="waveform-view processed-view"></div>
-                </div>
-                <div ref={processedMinimapRef} className="minimap-view"></div>
-
-                <div className="waveform-controls mt-4">
-                  <button className="btn btn-primary" style={{background:'var(--success)', border:'none'}} onClick={() => wsProcessed.current?.playPause()}><Play size={16} /> 재생</button>
-                  <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()}><Pause size={16} /> 일시정지</button>
-                  <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('in', true)}><ZoomIn size={16} /> 확대</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('out', true)}><ZoomOut size={16} /> 축소</button>
-                  <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)}><RotateCcw size={16} /> 배율 초기화</button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{height: '100%', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-muted)', border:'2px dashed var(--border)', borderRadius:'0.75rem', padding:'2rem'}}>
-              오디오 파일을 업로드하면 이곳에 파형이 표시됩니다.
+        <div className="col col-center">
+          <div className="card">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+              <h2 className="section-title" style={{margin:0}}>2. 원본 오디오 파형</h2>
+              <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{originalTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{originalDuration}</span></div>
             </div>
-          )}
+            
+            <div ref={originalTimelineRef} className="timeline-view"></div>
+            <div className="waveform-container">
+              <div className="y-axis-guide">
+                <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
+              </div>
+              <div ref={originalWaveformRef} className="waveform-view">
+                {!file && <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'var(--text-muted)', fontSize:'0.85rem'}}>오디오 파일을 업로드하면 파형이 표시됩니다.</div>}
+              </div>
+            </div>
+            <div ref={originalMinimapRef} className="minimap-view"></div>
+            
+            <div className="waveform-controls mt-4">
+              <button className="btn btn-primary" onClick={() => wsOriginal.current?.playPause()} disabled={!file}><Play size={16} /> 재생</button>
+              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()} disabled={!file}><Pause size={16} /> 일시정지</button>
+              <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }} disabled={!file}><RotateCcw size={16} /> 처음으로</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('in')} disabled={!file}><ZoomIn size={16} /> 확대</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('out')} disabled={!file}><ZoomOut size={16} /> 축소</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('reset')} disabled={!file}><RotateCcw size={16} /> 배율 초기화</button>
+            </div>
+          </div>
+
+          <div className="card">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+              <h2 className="section-title" style={{margin:0}}>5. 처리된 오디오 파형</h2>
+              <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{processedTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{processedDuration}</span></div>
+            </div>
+            
+            <div ref={processedTimelineRef} className="timeline-view"></div>
+            <div className="waveform-container" style={{borderColor: processedFile ? 'var(--success)' : 'var(--border)'}}>
+              <div className="y-axis-guide">
+                <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
+              </div>
+              <div ref={processedWaveformRef} className="waveform-view processed-view">
+                {!processedFile && <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'var(--text-muted)', fontSize:'0.85rem'}}>처리가 완료되면 파형이 표시됩니다.</div>}
+              </div>
+            </div>
+            <div ref={processedMinimapRef} className="minimap-view"></div>
+
+            <div className="waveform-controls mt-4">
+              <button className="btn btn-primary" style={{background:'var(--success)', border:'none'}} onClick={() => wsProcessed.current?.playPause()} disabled={!processedFile}><Play size={16} /> 재생</button>
+              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()} disabled={!processedFile}><Pause size={16} /> 일시정지</button>
+              <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }} disabled={!processedFile}><RotateCcw size={16} /> 처음으로</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('in', true)} disabled={!processedFile}><ZoomIn size={16} /> 확대</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('out', true)} disabled={!processedFile}><ZoomOut size={16} /> 축소</button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)} disabled={!processedFile}><RotateCcw size={16} /> 배율 초기화</button>
+            </div>
+          </div>
         </div>
 
         {/* RIGHT COLUMN */}
-        {file && (
-          <div className="col col-right">
+        <div className="col col-right" style={{opacity: file ? 1 : 0.5, pointerEvents: file ? 'auto' : 'none'}}>
             <div className="card">
               <h2 className="section-title"><Sliders size={18} /> 4. 음량 정리 프리셋</h2>
               <div className="preset-tabs">
@@ -583,16 +577,13 @@ function App() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
+        </div>
       </div>
 
-      {file && (
-        <div className="footer-tip">
-          <Info size={18} style={{flexShrink: 0, marginTop: '2px'}} />
-          <span>팁: 파형에서 드래그하여 구간을 선택하면 수동 삭제가 더 정확하게 가능합니다. 마우스 휠로 확대/축소할 수 있습니다. 설정값을 변경하면 자동으로 결과에 반영됩니다.</span>
-        </div>
-      )}
+      <div className="footer-tip">
+        <Info size={18} style={{flexShrink: 0, marginTop: '2px'}} />
+        <span>팁: 파형에서 드래그하여 구간을 선택하면 수동 삭제가 더 정확하게 가능합니다. 마우스 휠로 확대/축소할 수 있습니다. 설정값을 변경하면 자동으로 결과에 반영됩니다.</span>
+      </div>
     </div>
   );
 }
