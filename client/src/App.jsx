@@ -133,9 +133,9 @@ function App() {
   }, [file]);
 
   useEffect(() => {
-    if (processedFile && processedWaveformRef.current) {
-      if (wsProcessed.current) wsProcessed.current.destroy();
+    if (!processedWaveformRef.current) return;
 
+    if (!wsProcessed.current) {
       wsProcessed.current = WaveSurfer.create({
         container: processedWaveformRef.current,
         waveColor: '#94a3b8',
@@ -159,14 +159,23 @@ function App() {
         ]
       });
 
-      wsProcessed.current.load(processedFile.url);
       wsProcessed.current.on('ready', () => setProcessedDuration(formatTime(wsProcessed.current.getDuration())));
       wsProcessed.current.on('audioprocess', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
       wsProcessed.current.on('interaction', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
+    }
 
-      return () => wsProcessed.current?.destroy();
+    if (processedFile) {
+      wsProcessed.current.load(processedFile.url);
     }
   }, [processedFile]);
+
+  // Global cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (wsOriginal.current) wsOriginal.current.destroy();
+      if (wsProcessed.current) wsProcessed.current.destroy();
+    };
+  }, []);
 
   // Combined detect + process in one pass (prevents flicker from chained state updates)
   const autoProcessRef = useRef(null);
@@ -442,9 +451,8 @@ function App() {
               <div className="y-axis-guide">
                 <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
               </div>
-              <div ref={originalWaveformRef} className="waveform-view">
-                {!file && <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'var(--text-muted)', fontSize:'0.85rem'}}>오디오 파일을 업로드하면 파형이 표시됩니다.</div>}
-              </div>
+              <div ref={originalWaveformRef} className="waveform-view"></div>
+              {!file && <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-muted)', fontSize:'0.85rem', pointerEvents:'none'}}>오디오 파일을 업로드하면 파형이 표시됩니다.</div>}
             </div>
             <div ref={originalMinimapRef} className="minimap-view"></div>
             
@@ -469,9 +477,8 @@ function App() {
               <div className="y-axis-guide">
                 <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
               </div>
-              <div ref={processedWaveformRef} className="waveform-view processed-view">
-                {!processedFile && <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'var(--text-muted)', fontSize:'0.85rem'}}>처리가 완료되면 파형이 표시됩니다.</div>}
-              </div>
+              <div ref={processedWaveformRef} className="waveform-view processed-view"></div>
+              {!processedFile && <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-muted)', fontSize:'0.85rem', pointerEvents:'none'}}>처리가 완료되면 파형이 표시됩니다.</div>}
             </div>
             <div ref={processedMinimapRef} className="minimap-view"></div>
 
