@@ -53,9 +53,9 @@ function App() {
     originalDurationSecs: 0,
     silenceCount: 0,
     manualCount: 0,
-    silenceSegments: [],
-    manualDeleteRanges: []
+    silenceSegments: []
   });
+  const [manualDeleteRanges, setManualDeleteRanges] = useState([]);
 
   const fileInputRef = useRef(null);
   const originalWaveformRef = useRef(null);
@@ -86,6 +86,7 @@ function App() {
         barGap: 2,
         barRadius: 3,
         responsive: true,
+        fillParent: false,
         minPxPerSec: 50,
         plugins: [
           RegionsPlugin.create(),
@@ -147,6 +148,7 @@ function App() {
         barGap: 2,
         barRadius: 3,
         responsive: true,
+        fillParent: false,
         minPxPerSec: 50,
         plugins: [
           TimelinePlugin.create({ container: processedTimelineRef.current, height: 20 }),
@@ -209,7 +211,7 @@ function App() {
 
       // Step 2: Process audio (uses the segments we just detected)
       const processRes = await axios.post('/api/process', {
-        fileId: file.id, silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
+        fileId: file.id, silenceSegments, manualDeleteRanges: manualDeleteRanges,
         padding, targetLufs, truePeak, limiterEnabled, outputFormat: 'wav', bitrate: '192k'
       });
 
@@ -241,7 +243,7 @@ function App() {
     if (autoProcessRef.current) clearTimeout(autoProcessRef.current);
     autoProcessRef.current = setTimeout(() => { detectAndProcess(); }, 600);
     return () => clearTimeout(autoProcessRef.current);
-  }, [threshold, minSilence, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady, results.manualDeleteRanges]);
+  }, [threshold, minSilence, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady, manualDeleteRanges]);
 
   // --- ACTIONS & HANDLERS ---
   const formatTime = (seconds) => {
@@ -284,8 +286,9 @@ function App() {
 
   const handleManualDelete = async () => {
     if (!selectedRange || !file || statusType === 'busy') return;
-    const updatedManualRanges = [...results.manualDeleteRanges, { ...selectedRange }];
-    setResults(prev => ({ ...prev, manualCount: updatedManualRanges.length, manualDeleteRanges: updatedManualRanges }));
+    const updatedManualRanges = [...manualDeleteRanges, { ...selectedRange }];
+    setManualDeleteRanges(updatedManualRanges);
+    setResults(prev => ({ ...prev, manualCount: updatedManualRanges.length }));
     clearSelection();
   };
 
@@ -321,7 +324,7 @@ function App() {
       setStatusType('busy');
       try {
         const response = await axios.post('/api/process', {
-          fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
+          fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: manualDeleteRanges,
           padding, targetLufs, truePeak, limiterEnabled, outputFormat: 'wav', bitrate: '192k'
         });
         if (!response.data.success) return;
