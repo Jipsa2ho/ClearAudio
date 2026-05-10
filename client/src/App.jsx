@@ -393,12 +393,6 @@ function App() {
             <p>무음 구간을 제거하고, 음량을 정리한 뒤, 원하는 형식으로 내보내세요.</p>
           </div>
         </div>
-        <div className="header-right">
-          <button className="header-btn"><HelpCircle size={16}/> 도움말</button>
-          <button className="header-btn"><Clock size={16}/> 작업 기록</button>
-          <button className="header-btn"><Settings size={16}/> 설정</button>
-        </div>
-        <button className="mobile-menu-btn"><Menu size={24}/></button>
       </header>
 
       <div className="grid-layout">
