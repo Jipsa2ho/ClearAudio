@@ -1,0 +1,19 @@
+{
+  "name": "cleancut-audio-editor",
+  "version": "1.0.0",
+  "description": "클린컷 오디오 편집기 - CleanCut Audio Editor",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "client": "npm run dev --prefix client",
+    "server": "nodemon server/index.js",
+    "build": "npm run build --prefix client",
+    "install-all": "npm install && npm install --prefix client && npm install --prefix server"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

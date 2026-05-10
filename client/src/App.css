@@ -1,0 +1,285 @@
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.app-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+header p {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 1.25rem;
+  padding: 2rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+}
+
+/* Upload Area */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 1rem;
+  padding: 3rem 1rem;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background: #f1f5f9;
+}
+
+.upload-zone:hover {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+
+.upload-zone p {
+  color: var(--text-muted);
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.file-info {
+  margin-top: 1rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* Waveform Display */
+.waveform-container {
+  background: #f1f5f9;
+  border-radius: 0.75rem;
+  padding: 1.5rem 1rem 1rem 1rem; /* Extra top padding for playhead */
+  margin-bottom: 1rem;
+  position: relative;
+  overflow: visible;
+}
+
+/* Inverted Triangle Playhead */
+.waveform-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%; /* This will be controlled by inline style or handled via wavesurfer cursor */
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 10px solid var(--primary);
+  transform: translateX(-50%);
+  z-index: 10;
+  display: none; /* Hide by default, we'll use a better approach below */
+}
+
+/* Styling the wavesurfer cursor specifically */
+.waveform-view ::part(cursor) {
+  height: 100%;
+  border-left: 2px solid var(--primary);
+  overflow: visible;
+}
+
+.waveform-view ::part(cursor)::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -7px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 10px solid var(--primary);
+}
+
+.processed-view ::part(cursor) {
+  border-left-color: var(--success);
+}
+
+.processed-view ::part(cursor)::before {
+  border-top-color: var(--success);
+}
+
+.waveform-view {
+  width: 100%;
+  height: 128px;
+}
+
+.time-display {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.5rem;
+}
+
+.waveform-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+/* Buttons */
+.btn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-secondary { background: white; border-color: var(--border); color: var(--text); }
+.btn-secondary:hover { background: var(--bg); }
+.btn-danger { background: #fef2f2; color: var(--danger); border-color: #fee2e2; }
+.btn-danger:hover { background: #fee2e2; }
+
+/* Grid Layouts */
+.input-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.input-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+input, select {
+  padding: 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+input:focus, select:focus {
+  border-color: var(--primary);
+  ring: 2px solid var(--primary);
+}
+
+/* Presets */
+.preset-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.preset-tab {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.preset-tab.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Status & Results */
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 2rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  display: inline-block;
+  margin-bottom: 1.5rem;
+}
+
+.status-ready { background: #ecfdf5; color: var(--success); }
+.status-busy { background: #eff6ff; color: var(--primary); }
+.status-error { background: #fef2f2; color: var(--danger); }
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.result-item {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.result-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+.result-value { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+
+@media (max-width: 640px) {
+  .results-grid { grid-template-columns: 1fr; }
+  .input-grid { grid-template-columns: 1fr; }
+  header h1 { font-size: 2rem; }
+}
