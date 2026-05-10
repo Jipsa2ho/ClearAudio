@@ -168,85 +168,71 @@ function App() {
     }
   }, [processedFile]);
 
-  // --- AUTO PROCESSING LOGIC ---
-  const detectSilenceRef = useRef(null);
-  const processRef = useRef(null);
+  // Combined detect + process in one pass (prevents flicker from chained state updates)
+  const autoProcessRef = useRef(null);
+  const autoProcessing = useRef(false);
 
-  const getKoreanError = (error) => {
-    const msg = error?.response?.data?.error || error?.message || '';
-    if (msg.includes('No file uploaded')) return '파일을 선택해주세요.';
-    if (msg.includes('Unsupported file format')) return '지원하지 않는 파일 형식입니다.';
-    if (msg.includes('File too large')) return '파일 크기는 최대 100MB까지 가능합니다.';
-    if (msg.includes('Corrupt or invalid audio file')) return '오디오 파일을 읽을 수 없습니다.';
-    if (msg.includes('All audio segments were deleted')) return '구간이 너무 많아 오디오가 모두 삭제되었습니다.';
-    return '오류가 발생했습니다. 다시 시도해주세요.';
-  };
-
-  const detectSilence = async () => {
-    if (!file) return;
-    setStatus('무음 구간 탐색 중...');
+  const detectAndProcess = async () => {
+    if (!file || autoProcessing.current) return;
+    autoProcessing.current = true;
+    setStatus('처리 중...');
     setStatusType('busy');
+
     try {
-      const response = await axios.post('/api/detect-silence', { fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence });
-      if (response.data.success) {
-        const segments = response.data.silenceSegments;
+      // Step 1: Detect silence
+      const detectRes = await axios.post('/api/detect-silence', {
+        fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence
+      });
+
+      let silenceSegments = [];
+      if (detectRes.data.success) {
+        silenceSegments = detectRes.data.silenceSegments;
         const regions = wsOriginal.current?.plugins.find(p => p instanceof RegionsPlugin);
         if (regions) {
           regions.clearRegions();
-          segments.forEach((seg, i) => regions.addRegion({ id: `silence-${i}`, start: seg.start, end: seg.end, color: 'rgba(239, 68, 68, 0.3)', drag: false, resize: false }));
+          silenceSegments.forEach((seg, i) => regions.addRegion({
+            id: `silence-${i}`, start: seg.start, end: seg.end,
+            color: 'rgba(239, 68, 68, 0.3)', drag: false, resize: false
+          }));
         }
-        setResults(prev => ({ ...prev, silenceCount: segments.length, silenceSegments: segments }));
-        setStatus('탐색 완료');
+        setResults(prev => ({ ...prev, silenceCount: silenceSegments.length, silenceSegments }));
       }
-    } catch (error) {
-      setStatus('오류: ' + getKoreanError(error));
-      setStatusType('error');
-    }
-  };
 
-  const handleProcess = async (isDownload = false) => {
-    if (!file) return;
-    setStatus(isDownload ? '내보내는 중...' : '자동 처리 중...');
-    setStatusType('busy');
-    try {
-      const response = await axios.post('/api/process', {
-        fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
-        padding, targetLufs, truePeak, limiterEnabled, outputFormat: isDownload ? exportFormat : 'wav', bitrate: '192k'
+      // Step 2: Process audio (uses the segments we just detected)
+      const processRes = await axios.post('/api/process', {
+        fileId: file.id, silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
+        padding, targetLufs, truePeak, limiterEnabled, outputFormat: 'wav', bitrate: '192k'
       });
-      if (response.data.success) {
-        const data = response.data;
-        setResults(prev => ({ 
-          ...prev, 
-          processedLength: formatTime(data.processedDuration), 
+
+      if (processRes.data.success) {
+        const data = processRes.data;
+        setResults(prev => ({
+          ...prev,
+          processedLength: formatTime(data.processedDuration),
           deletedTime: formatTime(data.removedDuration),
           deletedTimeSecs: data.removedDuration
         }));
         setProcessedFileId(data.processedFileId);
-        setStatus(isDownload ? '완료' : '준비 완료');
-        setStatusType('ready');
-        if (!isDownload) setProcessedFile({ url: data.processedAudioUrl, duration: data.processedDuration });
-        return data.processedAudioUrl;
+        setProcessedFile({ url: data.processedAudioUrl, duration: data.processedDuration });
       }
+
+      setStatus('준비 완료');
+      setStatusType('ready');
     } catch (error) {
-      setStatus('처리 오류: ' + getKoreanError(error));
+      setStatus('처리 오류');
       setStatusType('error');
+    } finally {
+      autoProcessing.current = false;
     }
   };
 
+  // Single debounced useEffect for ALL setting changes
   useEffect(() => {
     if (!file || !waveformReady) return;
-    if (detectSilenceRef.current) clearTimeout(detectSilenceRef.current);
-    detectSilenceRef.current = setTimeout(() => { detectSilence(); }, 500);
-    return () => clearTimeout(detectSilenceRef.current);
-  }, [threshold, minSilence, waveformReady]);
-
-  useEffect(() => {
-    if (!file || !waveformReady) return;
-    if (statusType === 'busy' && status.includes('탐색')) return;
-    if (processRef.current) clearTimeout(processRef.current);
-    processRef.current = setTimeout(() => { handleProcess(); }, 500);
-    return () => clearTimeout(processRef.current);
-  }, [results.silenceSegments, results.manualDeleteRanges, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady]);
+    if (autoProcessRef.current) clearTimeout(autoProcessRef.current);
+    autoProcessRef.current = setTimeout(() => { detectAndProcess(); }, 600);
+    return () => clearTimeout(autoProcessRef.current);
+  }, [threshold, minSilence, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady, results.manualDeleteRanges]);
 
   // --- ACTIONS & HANDLERS ---
   const formatTime = (seconds) => {
@@ -307,16 +293,43 @@ function App() {
     else if (p === 'instagram') { setTargetLufs(-16); setTruePeak(-1.0); setLimiterEnabled(true); }
   };
 
+  const getKoreanError = (error) => {
+    const msg = error?.response?.data?.error || error?.message || '';
+    if (msg.includes('No file uploaded')) return '파일을 선택해주세요.';
+    if (msg.includes('Unsupported file format')) return '지원하지 않는 파일 형식입니다.';
+    if (msg.includes('File too large')) return '파일 크기는 최대 100MB까지 가능합니다.';
+    if (msg.includes('Corrupt or invalid audio file')) return '오디오 파일을 읽을 수 없습니다.';
+    if (msg.includes('All audio segments were deleted')) return '구간이 너무 많아 오디오가 모두 삭제되었습니다.';
+    return '오류가 발생했습니다. 다시 시도해주세요.';
+  };
+
   const handleDownload = async () => {
-    if (statusType === 'busy') return;
+    if (statusType === 'busy' || !file) return;
+
+    // If not yet processed, run a process pass first
     if (!processedFileId) {
-      const previewUrl = await handleProcess(false);
-      if (!previewUrl) return;
+      setStatus('처리 중...');
+      setStatusType('busy');
+      try {
+        const response = await axios.post('/api/process', {
+          fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
+          padding, targetLufs, truePeak, limiterEnabled, outputFormat: 'wav', bitrate: '192k'
+        });
+        if (!response.data.success) return;
+        setProcessedFileId(response.data.processedFileId);
+        // Continue to export with the new ID
+        var exportFileId = response.data.processedFileId;
+      } catch (error) {
+        setStatus('오류: ' + getKoreanError(error));
+        setStatusType('error');
+        return;
+      }
     }
+
     setStatus('내보내는 중...');
     setStatusType('busy');
     try {
-      const response = await axios.post('/api/export', { processedFileId, outputFilename: exportName, outputFormat: exportFormat, quality: exportQuality });
+      const response = await axios.post('/api/export', { processedFileId: exportFileId || processedFileId, outputFilename: exportName, outputFormat: exportFormat, quality: exportQuality });
       if (response.data.success) {
         setStatus('다운로드 완료');
         setStatusType('ready');
