@@ -21,6 +21,7 @@ function App() {
   const [file, setFile] = useState(null);
   const [processedFile, setProcessedFile] = useState(null);
   const [processedFileId, setProcessedFileId] = useState(null);
+  const [waveformReady, setWaveformReady] = useState(false);
   const [status, setStatus] = useState('준비 완료');
   const [statusType, setStatusType] = useState('ready');
   
@@ -72,6 +73,7 @@ function App() {
   useEffect(() => {
     if (file && originalWaveformRef.current) {
       if (wsOriginal.current) wsOriginal.current.destroy();
+      setWaveformReady(false);
 
       wsOriginal.current = WaveSurfer.create({
         container: originalWaveformRef.current,
@@ -102,12 +104,13 @@ function App() {
       wsOriginal.current.load(file.url);
       
       wsOriginal.current.on('ready', () => {
-        setStatus('준비 완료');
-        setStatusType('ready');
         const durationSecs = wsOriginal.current.getDuration();
         const duration = formatTime(durationSecs);
         setOriginalDuration(duration);
         setResults(prev => ({ ...prev, originalLength: duration, originalDurationSecs: durationSecs }));
+        setStatus('준비 완료');
+        setStatusType('ready');
+        setWaveformReady(true);
       });
 
       wsOriginal.current.on('audioprocess', () => setOriginalTime(formatTime(wsOriginal.current.getCurrentTime())));
@@ -231,19 +234,19 @@ function App() {
   };
 
   useEffect(() => {
-    if (!file) return;
+    if (!file || !waveformReady) return;
     if (detectSilenceRef.current) clearTimeout(detectSilenceRef.current);
     detectSilenceRef.current = setTimeout(() => { detectSilence(); }, 500);
     return () => clearTimeout(detectSilenceRef.current);
-  }, [threshold, minSilence, file]);
+  }, [threshold, minSilence, waveformReady]);
 
   useEffect(() => {
-    if (!file) return;
+    if (!file || !waveformReady) return;
     if (statusType === 'busy' && status.includes('탐색')) return;
     if (processRef.current) clearTimeout(processRef.current);
     processRef.current = setTimeout(() => { handleProcess(); }, 500);
     return () => clearTimeout(processRef.current);
-  }, [results.silenceSegments, results.manualDeleteRanges, padding, targetLufs, truePeak, limiterEnabled, preset, file]);
+  }, [results.silenceSegments, results.manualDeleteRanges, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady]);
 
   // --- ACTIONS & HANDLERS ---
   const formatTime = (seconds) => {

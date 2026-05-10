@@ -140,9 +140,11 @@ app.post('/api/upload', upload.single('audio'), (req, res) => {
     }
 
     const fileId = crypto.randomUUID();
+    // Multer encodes non-ASCII filenames as latin1; decode to UTF-8 for Korean support
+    const decodedFilename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     const fileData = {
       fileId,
-      originalFilename: req.file.originalname,
+      originalFilename: decodedFilename,
       uploadedFileUrl: `/uploads/${req.file.filename}`,
       duration: parseFloat(metadata.format.duration),
       path: req.file.path
