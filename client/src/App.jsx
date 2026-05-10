@@ -2,15 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Upload, Play, Pause, RotateCcw, ZoomIn, ZoomOut, Maximize, 
-  Scissors, Trash2, Download, Settings, CheckCircle, AlertCircle, FileAudio
+  Scissors, Trash2, Download, Settings, CheckCircle, AlertCircle, FileAudio,
+  HelpCircle, Clock, Menu, Video, Camera, Sliders, Info
 } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
+import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js';
+import MinimapPlugin from 'wavesurfer.js/dist/plugins/minimap.js';
 import './App.css';
 
 /**
  * CLEAN CUT AUDIO EDITOR - FRONTEND
- * Modern single-page React UI for audio cleanup
+ * Mockup-based 3-Column UI with Auto-Processing
  */
 
 function App() {
@@ -19,17 +22,15 @@ function App() {
   const [processedFile, setProcessedFile] = useState(null);
   const [processedFileId, setProcessedFileId] = useState(null);
   const [status, setStatus] = useState('준비 완료');
-  const [statusType, setStatusType] = useState('ready'); // ready, busy, error
+  const [statusType, setStatusType] = useState('ready');
   
-  // Time and visualization states
-  const [originalTime, setOriginalTime] = useState('00:00');
-  const [originalDuration, setOriginalDuration] = useState('00:00');
-  const [processedTime, setProcessedTime] = useState('00:00');
-  const [processedDuration, setProcessedDuration] = useState('00:00');
+  const [originalTime, setOriginalTime] = useState('00:00.000');
+  const [originalDuration, setOriginalDuration] = useState('00:00.000');
+  const [processedTime, setProcessedTime] = useState('00:00.000');
+  const [processedDuration, setProcessedDuration] = useState('00:00.000');
   const [zoom, setZoom] = useState(50);
   const [zoomProcessed, setZoomProcessed] = useState(50);
 
-  // Settings states
   const [threshold, setThreshold] = useState(-40);
   const [minSilence, setMinSilence] = useState(0.5);
   const [padding, setPadding] = useState(0.15);
@@ -39,16 +40,16 @@ function App() {
   const [truePeak, setTruePeak] = useState(-1.0);
   const [limiterEnabled, setLimiterEnabled] = useState(true);
 
-  // Export states
   const [exportName, setExportName] = useState('');
   const [exportFormat, setExportFormat] = useState('mp3');
   const [exportQuality, setExportQuality] = useState('보통');
 
-  // Results tracking
   const [results, setResults] = useState({
-    originalLength: '0:00',
-    processedLength: '0:00',
-    deletedTime: '0:00',
+    originalLength: '00:00.000',
+    processedLength: '00:00.000',
+    deletedTime: '00:00.000',
+    deletedTimeSecs: 0,
+    originalDurationSecs: 0,
     silenceCount: 0,
     manualCount: 0,
     silenceSegments: [],
@@ -57,12 +58,17 @@ function App() {
 
   const fileInputRef = useRef(null);
   const originalWaveformRef = useRef(null);
+  const originalTimelineRef = useRef(null);
+  const originalMinimapRef = useRef(null);
+  
   const processedWaveformRef = useRef(null);
+  const processedTimelineRef = useRef(null);
+  const processedMinimapRef = useRef(null);
+  
   const wsOriginal = useRef(null);
   const wsProcessed = useRef(null);
 
   // --- WAVEFORM INITIALIZATION ---
-
   useEffect(() => {
     if (file && originalWaveformRef.current) {
       if (wsOriginal.current) wsOriginal.current.destroy();
@@ -79,19 +85,29 @@ function App() {
         barRadius: 3,
         responsive: true,
         minPxPerSec: 50,
-        plugins: [RegionsPlugin.create()]
+        plugins: [
+          RegionsPlugin.create(),
+          TimelinePlugin.create({ container: originalTimelineRef.current, height: 20 }),
+          MinimapPlugin.create({
+            container: originalMinimapRef.current,
+            height: 40,
+            waveColor: '#cbd5e1',
+            progressColor: '#93c5fd'
+          })
+        ]
       });
 
-      setStatus('파형 불러오는 중');
+      setStatus('파형 불러오는 중...');
       setStatusType('busy');
       wsOriginal.current.load(file.url);
       
       wsOriginal.current.on('ready', () => {
         setStatus('준비 완료');
         setStatusType('ready');
-        const duration = formatTime(wsOriginal.current.getDuration());
+        const durationSecs = wsOriginal.current.getDuration();
+        const duration = formatTime(durationSecs);
         setOriginalDuration(duration);
-        setResults(prev => ({ ...prev, originalLength: duration }));
+        setResults(prev => ({ ...prev, originalLength: duration, originalDurationSecs: durationSecs }));
       });
 
       wsOriginal.current.on('audioprocess', () => setOriginalTime(formatTime(wsOriginal.current.getCurrentTime())));
@@ -99,7 +115,6 @@ function App() {
       wsOriginal.current.on('play', () => setStatus('재생 중'));
       wsOriginal.current.on('pause', () => setStatus('준비 완료'));
 
-      // Setup Regions Plugin for manual selection
       const regions = wsOriginal.current.plugins.find(p => p instanceof RegionsPlugin);
       if (regions) {
         regions.enableDragSelection({ color: 'rgba(59, 130, 246, 0.3)' });
@@ -129,7 +144,16 @@ function App() {
         barGap: 2,
         barRadius: 3,
         responsive: true,
-        minPxPerSec: 50
+        minPxPerSec: 50,
+        plugins: [
+          TimelinePlugin.create({ container: processedTimelineRef.current, height: 20 }),
+          MinimapPlugin.create({
+            container: processedMinimapRef.current,
+            height: 40,
+            waveColor: '#cbd5e1',
+            progressColor: '#6ee7b7'
+          })
+        ]
       });
 
       wsProcessed.current.load(processedFile.url);
@@ -137,36 +161,97 @@ function App() {
       wsProcessed.current.on('audioprocess', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
       wsProcessed.current.on('interaction', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
 
-      // Disable regions on processed waveform to avoid confusion
       return () => wsProcessed.current?.destroy();
     }
   }, [processedFile]);
 
-  // --- AUTO PROCESSING LOGIC (DEBOUNCED) ---
+  // --- AUTO PROCESSING LOGIC ---
   const detectSilenceRef = useRef(null);
   const processRef = useRef(null);
+
+  const getKoreanError = (error) => {
+    const msg = error?.response?.data?.error || error?.message || '';
+    if (msg.includes('No file uploaded')) return '파일을 선택해주세요.';
+    if (msg.includes('Unsupported file format')) return '지원하지 않는 파일 형식입니다.';
+    if (msg.includes('File too large')) return '파일 크기는 최대 100MB까지 가능합니다.';
+    if (msg.includes('Corrupt or invalid audio file')) return '오디오 파일을 읽을 수 없습니다.';
+    if (msg.includes('All audio segments were deleted')) return '구간이 너무 많아 오디오가 모두 삭제되었습니다.';
+    return '오류가 발생했습니다. 다시 시도해주세요.';
+  };
+
+  const detectSilence = async () => {
+    if (!file) return;
+    setStatus('무음 구간 탐색 중...');
+    setStatusType('busy');
+    try {
+      const response = await axios.post('/api/detect-silence', { fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence });
+      if (response.data.success) {
+        const segments = response.data.silenceSegments;
+        const regions = wsOriginal.current?.plugins.find(p => p instanceof RegionsPlugin);
+        if (regions) {
+          regions.clearRegions();
+          segments.forEach((seg, i) => regions.addRegion({ id: `silence-${i}`, start: seg.start, end: seg.end, color: 'rgba(239, 68, 68, 0.3)', drag: false, resize: false }));
+        }
+        setResults(prev => ({ ...prev, silenceCount: segments.length, silenceSegments: segments }));
+        setStatus('탐색 완료');
+      }
+    } catch (error) {
+      setStatus('오류: ' + getKoreanError(error));
+      setStatusType('error');
+    }
+  };
+
+  const handleProcess = async (isDownload = false) => {
+    if (!file) return;
+    setStatus(isDownload ? '내보내는 중...' : '자동 처리 중...');
+    setStatusType('busy');
+    try {
+      const response = await axios.post('/api/process', {
+        fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
+        padding, targetLufs, truePeak, limiterEnabled, outputFormat: isDownload ? exportFormat : 'wav', bitrate: '192k'
+      });
+      if (response.data.success) {
+        const data = response.data;
+        setResults(prev => ({ 
+          ...prev, 
+          processedLength: formatTime(data.processedDuration), 
+          deletedTime: formatTime(data.removedDuration),
+          deletedTimeSecs: data.removedDuration
+        }));
+        setProcessedFileId(data.processedFileId);
+        setStatus(isDownload ? '완료' : '준비 완료');
+        setStatusType('ready');
+        if (!isDownload) setProcessedFile({ url: data.processedAudioUrl, duration: data.processedDuration });
+        return data.processedAudioUrl;
+      }
+    } catch (error) {
+      setStatus('처리 오류: ' + getKoreanError(error));
+      setStatusType('error');
+    }
+  };
 
   useEffect(() => {
     if (!file) return;
     if (detectSilenceRef.current) clearTimeout(detectSilenceRef.current);
-    detectSilenceRef.current = setTimeout(() => {
-      detectSilence();
-    }, 500);
+    detectSilenceRef.current = setTimeout(() => { detectSilence(); }, 500);
     return () => clearTimeout(detectSilenceRef.current);
   }, [threshold, minSilence, file]);
 
   useEffect(() => {
     if (!file) return;
-    if (statusType === 'busy' && status.includes('탐색')) return; // Wait for silence detection
-    
+    if (statusType === 'busy' && status.includes('탐색')) return;
     if (processRef.current) clearTimeout(processRef.current);
-    processRef.current = setTimeout(() => {
-      handleProcess();
-    }, 500);
+    processRef.current = setTimeout(() => { handleProcess(); }, 500);
     return () => clearTimeout(processRef.current);
   }, [results.silenceSegments, results.manualDeleteRanges, padding, targetLufs, truePeak, limiterEnabled, preset, file]);
 
   // --- ACTIONS & HANDLERS ---
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  };
 
   const handleZoom = (direction, isProcessed = false) => {
     const ws = isProcessed ? wsProcessed.current : wsOriginal.current;
@@ -177,43 +262,19 @@ function App() {
     ws.zoom(newZoom);
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getKoreanError = (error) => {
-    const msg = error?.response?.data?.error || error?.message || '';
-    if (msg.includes('No file uploaded')) return '파일을 선택해주세요.';
-    if (msg.includes('Unsupported file format')) return '지원하지 않는 파일 형식입니다.';
-    if (msg.includes('File too large')) return '파일 크기는 최대 100MB까지 가능합니다.';
-    if (msg.includes('Corrupt or invalid audio file')) return '오디오 파일을 읽을 수 없습니다.';
-    if (msg.includes('Invalid silence threshold')) return '무음 기준값이 올바르지 않습니다.';
-    if (msg.includes('Invalid min silence duration')) return '최소 무음 길이가 올바르지 않습니다.';
-    if (msg.includes('Invalid padding value')) return '여백 값이 올바르지 않습니다.';
-    if (msg.includes('Invalid target LUFS')) return '목표 음량 LUFS 값이 올바르지 않습니다.';
-    if (msg.includes('Invalid true peak')) return '트루피크 dB 값이 올바르지 않습니다.';
-    if (msg.includes('All audio segments were deleted')) return '구간이 너무 많아 오디오가 모두 삭제되었습니다.';
-    return '오류가 발생했습니다. 다시 시도해주세요.';
-  };
-
   const handleFileUpload = async (e) => {
     const uploadedFile = e.target.files[0];
     if (!uploadedFile || statusType === 'busy') return;
-
-    setStatus('업로드 중');
+    setStatus('업로드 중...');
     setStatusType('busy');
-
     const formData = new FormData();
     formData.append('audio', uploadedFile);
-
     try {
       const response = await axios.post('/api/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       if (response.data.success) {
         const { fileId, originalFilename, uploadedFileUrl, duration } = response.data;
         setFile({ id: fileId, name: originalFilename, url: uploadedFileUrl, duration });
-        setExportName(originalFilename.split('.')[0]);
+        setExportName(originalFilename.split('.')[0] + '_fixed');
         setStatus('업로드 완료');
         setStatusType('ready');
       }
@@ -223,74 +284,11 @@ function App() {
     }
   };
 
-  const detectSilence = async () => {
-    if (!file || statusType === 'busy') return;
-    setStatus('무음 구간 탐색 중');
-    setStatusType('busy');
-
-    try {
-      const response = await axios.post('/api/detect-silence', { fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence });
-      if (response.data.success) {
-        const segments = response.data.silenceSegments;
-        if (segments.length === 0) {
-          setStatus('감지된 무음 구간이 없습니다');
-          setStatusType('ready');
-        } else {
-          const regions = wsOriginal.current.plugins.find(p => p instanceof RegionsPlugin);
-          if (regions) {
-            regions.clearRegions();
-            segments.forEach((seg, i) => regions.addRegion({ id: `silence-${i}`, start: seg.start, end: seg.end, color: 'rgba(239, 68, 68, 0.3)', drag: false, resize: false }));
-          }
-          setStatus('무음 구간 탐색 완료');
-          setStatusType('ready');
-          setResults(prev => ({ ...prev, silenceCount: segments.length, silenceSegments: segments }));
-        }
-      }
-    } catch (error) {
-      setStatus('오류 발생: ' + getKoreanError(error));
-      setStatusType('error');
-    }
-  };
-
-  const handleProcess = async (isDownload = false) => {
-    if (!file || statusType === 'busy') return;
-    setStatus(isDownload ? '내보내는 중' : '오디오 처리 중');
-    setStatusType('busy');
-
-    try {
-      const response = await axios.post('/api/process', {
-        fileId: file.id, silenceSegments: results.silenceSegments, manualDeleteRanges: results.manualDeleteRanges,
-        padding, targetLufs, truePeak, limiterEnabled, outputFormat: isDownload ? exportFormat : 'wav', bitrate: '192k'
-      });
-
-      if (response.data.success) {
-        const data = response.data;
-        setResults(prev => ({ ...prev, processedLength: formatTime(data.processedDuration), deletedTime: formatTime(data.removedDuration) }));
-        setProcessedFileId(data.processedFileId);
-        setStatus(isDownload ? '완료' : '자동 처리 완료');
-        setStatusType('ready');
-
-        if (!isDownload) {
-          setProcessedFile({ url: data.processedAudioUrl, duration: data.processedDuration });
-        }
-        return data.processedAudioUrl;
-      }
-    } catch (error) {
-      if (!isDownload) {
-        setStatus('자동 처리 오류');
-      } else {
-        setStatus('오류 발생: ' + getKoreanError(error));
-      }
-      setStatusType('error');
-    }
-  };
-
   const handleManualDelete = async () => {
     if (!selectedRange || !file || statusType === 'busy') return;
     const updatedManualRanges = [...results.manualDeleteRanges, { ...selectedRange }];
     setResults(prev => ({ ...prev, manualCount: updatedManualRanges.length, manualDeleteRanges: updatedManualRanges }));
     clearSelection();
-    // handleProcess will be triggered automatically by the useEffect watching results.manualDeleteRanges
   };
 
   const clearSelection = () => {
@@ -311,13 +309,12 @@ function App() {
       const previewUrl = await handleProcess(false);
       if (!previewUrl) return;
     }
-
-    setStatus('내보내는 중');
+    setStatus('내보내는 중...');
     setStatusType('busy');
     try {
       const response = await axios.post('/api/export', { processedFileId, outputFilename: exportName, outputFormat: exportFormat, quality: exportQuality });
       if (response.data.success) {
-        setStatus('완료');
+        setStatus('다운로드 완료');
         setStatusType('ready');
         const link = document.createElement('a');
         link.href = response.data.downloadUrl;
@@ -327,122 +324,275 @@ function App() {
         document.body.removeChild(link);
       }
     } catch (error) {
-      setStatus('오류 발생: ' + getKoreanError(error));
+      setStatus('오류: ' + getKoreanError(error));
       setStatusType('error');
     }
   };
 
-  // --- UI RENDER ---
+  const calculatePercentage = () => {
+    if (results.originalDurationSecs === 0) return '0.0%';
+    return ((results.deletedTimeSecs / results.originalDurationSecs) * 100).toFixed(1) + '%';
+  };
 
+  // --- UI RENDER ---
   return (
     <div className="app-container">
-      <header>
-        <h1>오디오 클린컷 에디터</h1>
-        <p>무음 구간을 제거하고, 음량을 정리한 뒤, 원하는 형식으로 내보내세요.</p>
+      <header className="header">
+        <div className="header-left">
+          <div className="logo-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h4l3-9 5 18 3-9h3"/></svg>
+          </div>
+          <div className="header-title-group">
+            <h1>오디오 클린컷 에디터</h1>
+            <p>무음 구간을 제거하고, 음량을 정리한 뒤, 원하는 형식으로 내보내세요.</p>
+          </div>
+        </div>
+        <div className="header-right">
+          <button className="header-btn"><HelpCircle size={16}/> 도움말</button>
+          <button className="header-btn"><Clock size={16}/> 작업 기록</button>
+          <button className="header-btn"><Settings size={16}/> 설정</button>
+        </div>
+        <button className="mobile-menu-btn"><Menu size={24}/></button>
       </header>
 
-      <div className="card">
-        <h2 className="section-title"><Upload size={20} /> 오디오 파일 업로드</h2>
-        <div className="upload-zone" onClick={() => fileInputRef.current.click()}>
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".mp3,.wav,.m4a,.aac" hidden />
-          <FileAudio size={48} className="mx-auto text-primary opacity-50" />
-          <div className="file-info">{file ? file.name : "파일을 선택하거나 이리로 끌어다 놓으세요"}</div>
-          <p>지원 형식: MP3, WAV, M4A, AAC (최대 100MB)</p>
+      <div className="grid-layout">
+        {/* LEFT COLUMN */}
+        <div className="col col-left">
+          <div className="card">
+            <h2 className="section-title"><Upload size={18} /> 1. 오디오 파일 업로드</h2>
+            <div className="upload-zone" onClick={() => fileInputRef.current.click()}>
+              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".mp3,.wav,.m4a,.aac" hidden />
+              <Upload size={32} className="mx-auto text-primary opacity-50 mb-2" />
+              <p>파일을 드래그 앤 드롭하거나</p>
+              <button className="btn btn-primary" style={{padding:'0.4rem 1rem', fontSize:'0.85rem'}}>파일 선택</button>
+              <div style={{fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'1rem'}}>지원 형식: MP3, WAV, M4A, AAC</div>
+              {file && <div className="file-info text-success">{file.name}</div>}
+            </div>
+          </div>
+
+          {file && (
+            <div className="card">
+              <h2 className="section-title"><Scissors size={18} /> 3. 구간 삭제 (자동 & 수동)</h2>
+              <div className="input-row">
+                <label>무음 기준 볼륨 dB <Info size={14} className="info-icon"/></label>
+                <div className="input-with-unit">
+                  <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+                  <span className="unit">dB</span>
+                </div>
+              </div>
+              <div className="input-row">
+                <label>최소 무음 길이 초 <Info size={14} className="info-icon"/></label>
+                <div className="input-with-unit">
+                  <input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} />
+                  <span className="unit">초</span>
+                </div>
+              </div>
+              <div className="input-row">
+                <label>말 앞뒤 여백 초 <Info size={14} className="info-icon"/></label>
+                <div className="input-with-unit">
+                  <input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} />
+                  <span className="unit">초</span>
+                </div>
+              </div>
+
+              <div style={{height: '1px', background: 'var(--border)', margin: '1.5rem 0 1rem 0'}}></div>
+              
+              <p className="text-muted" style={{fontSize:'0.8rem', marginBottom:'1rem'}}>파형에서 드래그하여 수동으로 삭제할 구간을 지정할 수 있습니다.</p>
+              <div className="input-row">
+                <label style={{fontSize:'0.8rem'}}>선택 시작 시간</label>
+                <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.start) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
+              </div>
+              <div className="input-row">
+                <label style={{fontSize:'0.8rem'}}>선택 종료 시간</label>
+                <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.end) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
+              </div>
+              <div style={{display:'flex', gap:'0.5rem', marginTop:'1rem'}}>
+                <button className="btn btn-danger" style={{flex:1, justifyContent:'center'}} onClick={handleManualDelete} disabled={!selectedRange || statusType === 'busy'}><Trash2 size={14} /> 선택 구간 삭제</button>
+                <button className="btn btn-secondary" style={{flex:1, justifyContent:'center'}} onClick={clearSelection}>선택 해제</button>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* CENTER COLUMN */}
+        <div className="col col-center" style={{gridColumn: file ? 'auto' : 'span 2'}}>
+          {file ? (
+            <>
+              <div className="card">
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+                  <h2 className="section-title" style={{margin:0}}>2. 원본 오디오 파형</h2>
+                  <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{originalTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{originalDuration}</span></div>
+                </div>
+                
+                <div ref={originalTimelineRef} className="timeline-view"></div>
+                <div className="waveform-container">
+                  <div className="y-axis-guide">
+                    <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
+                  </div>
+                  <div ref={originalWaveformRef} className="waveform-view"></div>
+                </div>
+                <div ref={originalMinimapRef} className="minimap-view"></div>
+                
+                <div className="waveform-controls mt-4">
+                  <button className="btn btn-primary" onClick={() => wsOriginal.current?.playPause()}><Play size={16} /> 재생</button>
+                  <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()}><Pause size={16} /> 일시정지</button>
+                  <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('in')}><ZoomIn size={16} /> 확대</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('out')}><ZoomOut size={16} /> 축소</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('reset')}><RotateCcw size={16} /> 배율 초기화</button>
+                </div>
+              </div>
+
+              <div className="card">
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+                  <h2 className="section-title" style={{margin:0}}>5. 처리된 오디오 파형</h2>
+                  <div className="time-display" style={{margin:0}}>현재 시간 <span style={{fontWeight:'600', marginLeft:'4px', marginRight:'8px'}}>{processedTime}</span> / 전체 길이 <span style={{fontWeight:'600', marginLeft:'4px'}}>{processedDuration}</span></div>
+                </div>
+                
+                <div ref={processedTimelineRef} className="timeline-view"></div>
+                <div className="waveform-container" style={{borderColor: 'var(--success)'}}>
+                  <div className="y-axis-guide">
+                    <span>0 dB</span><span>-6</span><span>-12</span><span>-18</span><span>-24</span><span>-30</span><span>-36</span><span>-∞</span>
+                  </div>
+                  <div ref={processedWaveformRef} className="waveform-view processed-view"></div>
+                </div>
+                <div ref={processedMinimapRef} className="minimap-view"></div>
+
+                <div className="waveform-controls mt-4">
+                  <button className="btn btn-primary" style={{background:'var(--success)', border:'none'}} onClick={() => wsProcessed.current?.playPause()}><Play size={16} /> 재생</button>
+                  <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()}><Pause size={16} /> 일시정지</button>
+                  <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('in', true)}><ZoomIn size={16} /> 확대</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('out', true)}><ZoomOut size={16} /> 축소</button>
+                  <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)}><RotateCcw size={16} /> 배율 초기화</button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{height: '100%', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-muted)', border:'2px dashed var(--border)', borderRadius:'0.75rem', padding:'2rem'}}>
+              오디오 파일을 업로드하면 이곳에 파형이 표시됩니다.
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN */}
+        {file && (
+          <div className="col col-right">
+            <div className="card">
+              <h2 className="section-title"><Sliders size={18} /> 4. 음량 정리 프리셋</h2>
+              <div className="preset-tabs">
+                <div className={`preset-tab ${preset === 'youtube' ? 'active' : ''}`} onClick={() => applyPreset('youtube')}>
+                  <Video size={20} color={preset==='youtube'?'#2563eb':'var(--text-muted)'} />
+                  <span>유튜브 최적화</span>
+                </div>
+                <div className={`preset-tab ${preset === 'instagram' ? 'active' : ''}`} onClick={() => applyPreset('instagram')}>
+                  <Camera size={20} color={preset==='instagram'?'#2563eb':'var(--text-muted)'} />
+                  <span>인스타그램 최적화</span>
+                </div>
+                <div className={`preset-tab ${preset === 'custom' ? 'active' : ''}`} onClick={() => setPreset('custom')}>
+                  <Sliders size={20} color={preset==='custom'?'#2563eb':'var(--text-muted)'} />
+                  <span>직접 설정</span>
+                </div>
+              </div>
+              <div className="input-row">
+                <label>목표 음량 LUFS <Info size={14} className="info-icon"/></label>
+                <div className="input-with-unit">
+                  <input type="number" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} disabled={preset !== 'custom'} />
+                  <span className="unit">LUFS</span>
+                </div>
+              </div>
+              <div className="input-row">
+                <label>트루피크 dB <Info size={14} className="info-icon"/></label>
+                <div className="input-with-unit">
+                  <input type="number" step="0.1" value={truePeak} onChange={(e) => setTruePeak(e.target.value)} disabled={preset !== 'custom'} />
+                  <span className="unit">dB</span>
+                </div>
+              </div>
+              <div className="input-row mt-2" style={{justifyContent: 'space-between', width: '100%'}}>
+                <label>리미터 사용 <Info size={14} className="info-icon"/></label>
+                <label className="toggle-switch">
+                  <input type="checkbox" checked={limiterEnabled} onChange={(e) => setLimiterEnabled(e.target.checked)} disabled={preset !== 'custom'} />
+                  <span className="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div className="card">
+              <h2 className="section-title"><Download size={18} /> 6. 내보내기</h2>
+              <div style={{marginBottom:'1rem'}}>
+                <label style={{fontSize:'0.85rem', color:'var(--text)', display:'block', marginBottom:'0.3rem'}}>파일 이름</label>
+                <input type="text" placeholder="파일명_fixed" value={exportName} onChange={(e) => setExportName(e.target.value)} />
+              </div>
+              
+              <div style={{marginBottom:'1rem'}}>
+                <label style={{fontSize:'0.85rem', color:'var(--text)', display:'block', marginBottom:'0.5rem'}}>출력 형식</label>
+                <div className="radio-group">
+                  <label><input type="radio" name="format" value="mp3" checked={exportFormat==='mp3'} onChange={(e)=>setExportFormat(e.target.value)} /> MP3</label>
+                  <label><input type="radio" name="format" value="wav" checked={exportFormat==='wav'} onChange={(e)=>setExportFormat(e.target.value)} /> WAV</label>
+                </div>
+              </div>
+
+              <div style={{marginBottom:'1.5rem'}}>
+                <label style={{fontSize:'0.85rem', color:'var(--text)', display:'block', marginBottom:'0.3rem'}}>음질</label>
+                <div className="quality-tabs">
+                  <div className={`quality-tab ${exportQuality==='낮음'?'active':''}`} onClick={() => setExportQuality('낮음')}>
+                    <span>낮음</span><span>128 kbps</span>
+                  </div>
+                  <div className={`quality-tab ${exportQuality==='보통'?'active':''}`} onClick={() => setExportQuality('보통')}>
+                    <span>보통</span><span>192 kbps</span>
+                  </div>
+                  <div className={`quality-tab ${exportQuality==='높음'?'active':''}`} onClick={() => setExportQuality('높음')}>
+                    <span>높음</span><span>320 kbps</span>
+                  </div>
+                </div>
+              </div>
+
+              <button className="btn btn-primary w-full justify-center" style={{padding:'0.8rem', fontSize:'1rem'}} onClick={handleDownload} disabled={statusType === 'busy'}><Download size={18} /> 최종 오디오 다운로드</button>
+            </div>
+
+            <div className="card">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <h2 className="section-title" style={{margin:0}}><CheckCircle size={18} /> 7. 처리 상태</h2>
+                <div className={`status-badge ${statusType}`}>
+                  {status}
+                </div>
+              </div>
+
+              <div className="status-list">
+                <div className="status-row">
+                  <div className="status-label-group"><div className="status-dot active"></div> 원본 길이</div>
+                  <div className="status-value">{results.originalLength}</div>
+                </div>
+                <div className="status-row">
+                  <div className="status-label-group"><div className="status-dot active"></div> 처리 후 길이</div>
+                  <div className="status-value">{results.processedLength}</div>
+                </div>
+                <div className="status-row">
+                  <div className="status-label-group"><div className="status-dot active"></div> 삭제된 시간</div>
+                  <div className="status-value" style={{color:'var(--success)'}}>
+                    {results.deletedTime} <span style={{fontSize:'0.75rem', fontWeight:'normal'}}>({calculatePercentage()})</span>
+                  </div>
+                </div>
+                <div className="status-row">
+                  <div className="status-label-group"><div className="status-dot active"></div> 감지된 무음 구간 수</div>
+                  <div className="status-value">{results.silenceCount}</div>
+                </div>
+                <div className="status-row">
+                  <div className="status-label-group"><div className="status-dot active"></div> 수동 삭제 구간 수</div>
+                  <div className="status-value">{results.manualCount}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {file && (
-        <>
-          <div className="card">
-            <h2 className="section-title"><Play size={20} /> 원본 오디오</h2>
-            <div className="waveform-container">
-              <div ref={originalWaveformRef} className="waveform-view"></div>
-              <div className="time-display"><span>{originalTime}</span><span>{originalDuration}</span></div>
-            </div>
-            <div className="waveform-controls">
-              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.playPause()}><Play size={16} /> <span className="btn-text">재생</span></button>
-              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()}><Pause size={16} /> <span className="btn-text">정지</span></button>
-              <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }}><RotateCcw size={16} /> <span className="btn-text">처음</span></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('in')}><ZoomIn size={16} /></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('out')}><ZoomOut size={16} /></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('reset')}><Maximize size={16} /></button>
-              
-              {selectedRange && (
-                <>
-                  <div style={{width: '1px', height: '20px', background: 'var(--border)', margin: '0 0.5rem'}}></div>
-                  <button className="btn btn-danger" onClick={handleManualDelete} disabled={statusType === 'busy'}><Trash2 size={16} /> <span className="btn-text">선택 삭제</span></button>
-                  <button className="btn btn-secondary" onClick={clearSelection}><span className="btn-text">취소</span></button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><Settings size={20} /> 편집 설정 (자동 적용)</h2>
-            <div className="preset-tabs">
-              <div className={`preset-tab ${preset === 'youtube' ? 'active' : ''}`} onClick={() => applyPreset('youtube')}>유튜브</div>
-              <div className={`preset-tab ${preset === 'instagram' ? 'active' : ''}`} onClick={() => applyPreset('instagram')}>인스타그램</div>
-              <div className={`preset-tab ${preset === 'custom' ? 'active' : ''}`} onClick={() => setPreset('custom')}>직접 설정</div>
-            </div>
-            <div className="input-grid">
-              <div className="input-group"><label>무음 기준 dB</label><input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
-              <div className="input-group"><label>최소 무음 (초)</label><input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} /></div>
-              <div className="input-group"><label>여백 (초)</label><input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} /></div>
-              <div className="input-group"><label>목표 LUFS</label><input type="number" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} disabled={preset !== 'custom'} /></div>
-              <div className="input-group"><label>트루피크 dB</label><input type="number" step="0.1" value={truePeak} onChange={(e) => setTruePeak(e.target.value)} disabled={preset !== 'custom'} /></div>
-              <div className="input-group flex-row items-center gap-2" style={{flexDirection: 'row', paddingTop: '1.2rem'}}><input type="checkbox" checked={limiterEnabled} onChange={(e) => setLimiterEnabled(e.target.checked)} disabled={preset !== 'custom'} /><label>리미터</label></div>
-            </div>
-            <p className="text-muted text-sm" style={{fontSize: '0.8rem', marginTop: '0.5rem'}}>💡 원본 파형에서 삭제할 구간을 드래그하면 수동 삭제 버튼이 나타납니다. 설정값 변경 시 자동으로 처리됩니다.</p>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><Play size={20} /> 처리 완료 오디오</h2>
-            <div className="waveform-container">
-              <div ref={processedWaveformRef} className="waveform-view processed-view"></div>
-              <div className="time-display"><span>{processedTime}</span><span>{processedDuration}</span></div>
-            </div>
-            <div className="waveform-controls">
-              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.playPause()}><Play size={16} /> <span className="btn-text">재생</span></button>
-              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()}><Pause size={16} /> <span className="btn-text">정지</span></button>
-              <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }}><RotateCcw size={16} /> <span className="btn-text">처음</span></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('in', true)}><ZoomIn size={16} /></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('out', true)}><ZoomOut size={16} /></button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)}><Maximize size={16} /></button>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><Download size={20} /> 내보내기</h2>
-            <div className="input-grid">
-              <div className="input-group"><label>파일 이름</label><input type="text" placeholder="파일명_fixed" value={exportName} onChange={(e) => setExportName(e.target.value)} /></div>
-              <div className="input-group"><label>출력 형식</label><select value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}><option value="mp3">MP3</option><option value="wav">WAV</option></select></div>
-              <div className="input-group"><label>음질</label><select value={exportQuality} onChange={(e) => setExportQuality(e.target.value)}><option value="낮음">낮음</option><option value="보통">보통</option><option value="높음">높음</option></select></div>
-            </div>
-            <button className="btn btn-primary w-full justify-center h-12 text-lg mt-4" onClick={handleDownload} disabled={statusType === 'busy'}><Download size={20} /> 최종 오디오 다운로드</button>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><CheckCircle size={20} /> 처리 상태</h2>
-            <div className={`status-badge status-${statusType}`}>
-              {statusType === 'ready' && <CheckCircle size={14} className="inline mr-1" />}
-              {statusType === 'busy' && <div className="animate-spin inline-block w-3 h-3 border-2 border-primary border-t-transparent rounded-full mr-1" />}
-              {statusType === 'error' && <AlertCircle size={14} className="inline mr-1" />}
-              {status}
-            </div>
-            <div className="results-grid">
-              <div className="result-item"><div className="result-label">원본 길이</div><div className="result-value">{results.originalLength}</div></div>
-              <div className="result-item"><div className="result-label">처리 후 길이</div><div className="result-value">{results.processedLength}</div></div>
-              <div className="result-item"><div className="result-label">삭제된 시간</div><div className="result-value text-danger">{results.deletedTime}</div></div>
-              <div className="result-item"><div className="result-label">감지된 무음 구간</div><div className="result-value">{results.silenceCount}개</div></div>
-              <div className="result-item"><div className="result-label">수동 삭제 구간</div><div className="result-value">{results.manualCount}개</div></div>
-            </div>
-          </div>
-        </>
+        <div className="footer-tip">
+          <Info size={18} style={{flexShrink: 0, marginTop: '2px'}} />
+          <span>팁: 파형에서 드래그하여 구간을 선택하면 수동 삭제가 더 정확하게 가능합니다. 마우스 휠로 확대/축소할 수 있습니다. 설정값을 변경하면 자동으로 결과에 반영됩니다.</span>
+        </div>
       )}
-
-      <footer className="text-center py-8 text-text-muted text-sm">
-        <p>© 2026 오디오 클린컷 에디터 - CleanCut Audio Editor</p>
-      </footer>
     </div>
   );
 }
