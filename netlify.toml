@@ -1,6 +1,6 @@
 [build]
-  # Build command for the frontend
-  command = "npm run build"
+  # Install client dependencies then build the frontend
+  command = "npm --prefix client install && npm --prefix client run build"
   # The directory where Vite outputs the build
   publish = "client/dist"
 
