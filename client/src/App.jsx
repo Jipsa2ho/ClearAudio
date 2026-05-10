@@ -50,7 +50,6 @@ function App() {
   const [threshold, setThreshold] = useState(-40);
   const [minSilence, setMinSilence] = useState(0.5);
   const [padding, setPadding] = useState(0.15);
-  const [selectedRange, setSelectedRange] = useState(null);
   const [preset, setPreset] = useState('youtube');
   const [targetLufs, setTargetLufs] = useState(-14);
   const [truePeak, setTruePeak] = useState(-1.0);
@@ -133,14 +132,51 @@ function App() {
       wsOriginal.current.on('play', () => setStatus('재생 중'));
       wsOriginal.current.on('pause', () => setStatus('준비 완료'));
 
+      const updateManualRanges = (regionsPlugin) => {
+        const manualRegions = regionsPlugin.getRegions().filter(r => r.id.startsWith('manual-'));
+        const ranges = manualRegions.map(r => ({ start: r.start, end: r.end }));
+        setManualDeleteRanges(ranges);
+        setResults(prev => ({ ...prev, manualCount: ranges.length }));
+      };
+
       const regions = wsOriginal.current.plugins.find(p => p instanceof RegionsPlugin);
       if (regions) {
-        regions.enableDragSelection({ color: 'rgba(59, 130, 246, 0.3)' });
+        regions.enableDragSelection({ color: 'rgba(192, 132, 252, 0.4)' }); // Light purple
         regions.on('region-created', (region) => {
-          regions.getRegions().forEach(r => { if (r.id !== region.id && !r.id.startsWith('silence-')) r.remove(); });
-          setSelectedRange({ start: region.start, end: region.end });
+          if (!region.id.startsWith('silence-') && !region.id.startsWith('manual-')) {
+            region.id = 'manual-' + Math.random().toString(36).substr(2, 9);
+            
+            // Add red X button
+            const btn = document.createElement('div');
+            btn.innerHTML = '✕';
+            btn.style.position = 'absolute';
+            btn.style.top = '2px';
+            btn.style.right = '2px';
+            btn.style.color = '#fff';
+            btn.style.backgroundColor = '#ef4444';
+            btn.style.width = '16px';
+            btn.style.height = '16px';
+            btn.style.borderRadius = '50%';
+            btn.style.fontSize = '10px';
+            btn.style.display = 'flex';
+            btn.style.alignItems = 'center';
+            btn.style.justifyContent = 'center';
+            btn.style.cursor = 'pointer';
+            btn.style.zIndex = '10';
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              region.remove();
+              updateManualRanges(regions);
+            };
+            region.element.appendChild(btn);
+          }
         });
-        regions.on('region-updated', (region) => setSelectedRange({ start: region.start, end: region.end }));
+
+        regions.on('region-update-end', (region) => {
+          if (region.id.startsWith('manual-')) {
+            updateManualRanges(regions);
+          }
+        });
       }
 
       return () => wsOriginal.current?.destroy();
@@ -206,7 +242,7 @@ function App() {
     try {
       // Step 1: Detect silence
       const detectRes = await axios.post('/api/detect-silence', {
-        fileId: file.id, threshold, minSilence
+        fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence
       });
       if (latestRequestId.current !== currentRequestId) return; // Abort if newer request exists
 
@@ -215,7 +251,10 @@ function App() {
         silenceSegments = detectRes.data.silenceSegments;
         const regions = wsOriginal.current?.plugins.find(p => p instanceof RegionsPlugin);
         if (regions) {
-          regions.clearRegions();
+          // Remove ONLY old silence regions
+          regions.getRegions().forEach(r => {
+            if (r.id.startsWith('silence-')) r.remove();
+          });
           silenceSegments.forEach((seg, i) => regions.addRegion({
             id: `silence-${i}`, start: seg.start, end: seg.end,
             color: 'rgba(239, 68, 68, 0.3)', drag: false, resize: false
@@ -316,19 +355,16 @@ function App() {
     }
   };
 
-  const handleManualDelete = async () => {
-    if (!selectedRange || !file || statusType === 'busy') return;
-    const updatedManualRanges = [...manualDeleteRanges, { ...selectedRange }];
-    setManualDeleteRanges(updatedManualRanges);
-    setResults(prev => ({ ...prev, manualCount: updatedManualRanges.length }));
-    clearSelection();
-  };
-
-  const clearSelection = () => {
-    if (!wsOriginal.current) { setSelectedRange(null); return; }
+  const clearAllManualSelections = () => {
+    if (!wsOriginal.current) return;
     const regions = wsOriginal.current.plugins.find(p => p instanceof RegionsPlugin);
-    if (regions) regions.getRegions().forEach(r => { if (!r.id.startsWith('silence-')) r.remove(); });
-    setSelectedRange(null);
+    if (regions) {
+      regions.getRegions().forEach(r => {
+        if (r.id.startsWith('manual-')) r.remove();
+      });
+    }
+    setManualDeleteRanges([]);
+    setResults(prev => ({ ...prev, manualCount: 0 }));
   };
 
   const applyPreset = (p) => {
@@ -451,18 +487,9 @@ function App() {
 
             <div style={{height: '1px', background: 'var(--border)', margin: '1.5rem 0 1rem 0'}}></div>
             
-            <p className="text-muted" style={{fontSize:'0.8rem', marginBottom:'1rem'}}>파형에서 드래그하여 수동으로 삭제할 구간을 지정할 수 있습니다.</p>
-            <div className="input-row">
-              <label style={{fontSize:'0.8rem'}}>선택 시작 시간</label>
-              <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.start) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
-            </div>
-            <div className="input-row">
-              <label style={{fontSize:'0.8rem'}}>선택 종료 시간</label>
-              <input type="text" readOnly value={selectedRange ? formatTime(selectedRange.end) : '00:00:00.000'} style={{width:'130px', textAlign:'right'}} />
-            </div>
+            <p className="text-muted" style={{fontSize:'0.8rem', marginBottom:'1rem'}}>파형에서 드래그하여 수동으로 삭제할 구간을 지정할 수 있습니다. 각 구간의 빨간색 X를 눌러 취소할 수 있습니다.</p>
             <div style={{display:'flex', gap:'0.5rem', marginTop:'1rem'}}>
-              <button className="btn btn-danger" style={{flex:1, justifyContent:'center'}} onClick={handleManualDelete} disabled={!selectedRange || statusType === 'busy' || !file}><Trash2 size={14} /> 선택 구간 삭제</button>
-              <button className="btn btn-secondary" style={{flex:1, justifyContent:'center'}} onClick={clearSelection} disabled={!file}>선택 해제</button>
+              <button className="btn btn-secondary" style={{flex:1, justifyContent:'center'}} onClick={clearAllManualSelections} disabled={!file || manualDeleteRanges.length === 0}>수동삭제 일괄해제</button>
             </div>
           </div>
         </div>
