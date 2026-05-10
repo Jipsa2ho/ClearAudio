@@ -137,9 +137,34 @@ function App() {
       wsProcessed.current.on('audioprocess', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
       wsProcessed.current.on('interaction', () => setProcessedTime(formatTime(wsProcessed.current.getCurrentTime())));
 
+      // Disable regions on processed waveform to avoid confusion
       return () => wsProcessed.current?.destroy();
     }
   }, [processedFile]);
+
+  // --- AUTO PROCESSING LOGIC (DEBOUNCED) ---
+  const detectSilenceRef = useRef(null);
+  const processRef = useRef(null);
+
+  useEffect(() => {
+    if (!file) return;
+    if (detectSilenceRef.current) clearTimeout(detectSilenceRef.current);
+    detectSilenceRef.current = setTimeout(() => {
+      detectSilence();
+    }, 500);
+    return () => clearTimeout(detectSilenceRef.current);
+  }, [threshold, minSilence, file]);
+
+  useEffect(() => {
+    if (!file) return;
+    if (statusType === 'busy' && status.includes('탐색')) return; // Wait for silence detection
+    
+    if (processRef.current) clearTimeout(processRef.current);
+    processRef.current = setTimeout(() => {
+      handleProcess();
+    }, 500);
+    return () => clearTimeout(processRef.current);
+  }, [results.silenceSegments, results.manualDeleteRanges, padding, targetLufs, truePeak, limiterEnabled, preset, file]);
 
   // --- ACTIONS & HANDLERS ---
 
@@ -242,7 +267,7 @@ function App() {
         const data = response.data;
         setResults(prev => ({ ...prev, processedLength: formatTime(data.processedDuration), deletedTime: formatTime(data.removedDuration) }));
         setProcessedFileId(data.processedFileId);
-        setStatus(isDownload ? '완료' : '처리 완료');
+        setStatus(isDownload ? '완료' : '자동 처리 완료');
         setStatusType('ready');
 
         if (!isDownload) {
@@ -251,7 +276,11 @@ function App() {
         return data.processedAudioUrl;
       }
     } catch (error) {
-      setStatus('오류 발생: ' + getKoreanError(error));
+      if (!isDownload) {
+        setStatus('자동 처리 오류');
+      } else {
+        setStatus('오류 발생: ' + getKoreanError(error));
+      }
       setStatusType('error');
     }
   };
@@ -261,7 +290,7 @@ function App() {
     const updatedManualRanges = [...results.manualDeleteRanges, { ...selectedRange }];
     setResults(prev => ({ ...prev, manualCount: updatedManualRanges.length, manualDeleteRanges: updatedManualRanges }));
     clearSelection();
-    await handleProcess();
+    // handleProcess will be triggered automatically by the useEffect watching results.manualDeleteRanges
   };
 
   const clearSelection = () => {
@@ -325,72 +354,60 @@ function App() {
       {file && (
         <>
           <div className="card">
-            <h2 className="section-title"><Play size={20} /> 원본 오디오 파형</h2>
+            <h2 className="section-title"><Play size={20} /> 원본 오디오</h2>
             <div className="waveform-container">
               <div ref={originalWaveformRef} className="waveform-view"></div>
               <div className="time-display"><span>{originalTime}</span><span>{originalDuration}</span></div>
             </div>
             <div className="waveform-controls">
-              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.playPause()}><Play size={16} /> 재생</button>
-              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()}><Pause size={16} /> 일시정지</button>
-              <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('in')}><ZoomIn size={16} /> 확대</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('out')}><ZoomOut size={16} /> 축소</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('reset')}><Maximize size={16} /> 배율 초기화</button>
+              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.playPause()}><Play size={16} /> <span className="btn-text">재생</span></button>
+              <button className="btn btn-secondary" onClick={() => wsOriginal.current?.pause()}><Pause size={16} /> <span className="btn-text">정지</span></button>
+              <button className="btn btn-secondary" onClick={() => { wsOriginal.current?.stop(); wsOriginal.current?.seekTo(0); }}><RotateCcw size={16} /> <span className="btn-text">처음</span></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('in')}><ZoomIn size={16} /></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('out')}><ZoomOut size={16} /></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('reset')}><Maximize size={16} /></button>
+              
+              {selectedRange && (
+                <>
+                  <div style={{width: '1px', height: '20px', background: 'var(--border)', margin: '0 0.5rem'}}></div>
+                  <button className="btn btn-danger" onClick={handleManualDelete} disabled={statusType === 'busy'}><Trash2 size={16} /> <span className="btn-text">선택 삭제</span></button>
+                  <button className="btn btn-secondary" onClick={clearSelection}><span className="btn-text">취소</span></button>
+                </>
+              )}
             </div>
           </div>
 
           <div className="card">
-            <h2 className="section-title"><Scissors size={20} /> 자동 무음 구간 삭제</h2>
-            <div className="input-grid">
-              <div className="input-group"><label>무음 기준 볼륨 dB</label><input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
-              <div className="input-group"><label>최소 무음 길이 초</label><input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} /></div>
-              <div className="input-group"><label>말 앞뒤 여백 초</label><input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} /></div>
-            </div>
-            <button className="btn btn-primary w-full justify-center" onClick={detectSilence} disabled={statusType === 'busy'}>무음 구간 탐색</button>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><Trash2 size={20} /> 수동 구간 삭제</h2>
-            <p className="text-muted text-sm mb-4">위의 파형에서 삭제할 구간을 마우스로 드래그하여 선택하세요.</p>
-            <div className="input-grid">
-              <div className="input-group"><label>선택 시작 시간</label><input type="text" readOnly value={selectedRange ? formatTime(selectedRange.start) : '00:00'} /></div>
-              <div className="input-group"><label>선택 종료 시간</label><input type="text" readOnly value={selectedRange ? formatTime(selectedRange.end) : '00:00'} /></div>
-            </div>
-            <div className="flex gap-2">
-              <button className="btn btn-danger flex-1 justify-center" onClick={handleManualDelete} disabled={!selectedRange || statusType === 'busy'}><Trash2 size={16} /> 선택 구간 삭제</button>
-              <button className="btn btn-secondary flex-1 justify-center" onClick={clearSelection}>선택 해제</button>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title"><Settings size={20} /> 음량 정리 프리셋</h2>
+            <h2 className="section-title"><Settings size={20} /> 편집 설정 (자동 적용)</h2>
             <div className="preset-tabs">
-              <div className={`preset-tab ${preset === 'youtube' ? 'active' : ''}`} onClick={() => applyPreset('youtube')}>유튜브 최적화</div>
-              <div className={`preset-tab ${preset === 'instagram' ? 'active' : ''}`} onClick={() => applyPreset('instagram')}>인스타그램 최적화</div>
+              <div className={`preset-tab ${preset === 'youtube' ? 'active' : ''}`} onClick={() => applyPreset('youtube')}>유튜브</div>
+              <div className={`preset-tab ${preset === 'instagram' ? 'active' : ''}`} onClick={() => applyPreset('instagram')}>인스타그램</div>
               <div className={`preset-tab ${preset === 'custom' ? 'active' : ''}`} onClick={() => setPreset('custom')}>직접 설정</div>
             </div>
             <div className="input-grid">
-              <div className="input-group"><label>목표 음량 LUFS</label><input type="number" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} disabled={preset !== 'custom'} /></div>
+              <div className="input-group"><label>무음 기준 dB</label><input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
+              <div className="input-group"><label>최소 무음 (초)</label><input type="number" step="0.1" value={minSilence} onChange={(e) => setMinSilence(e.target.value)} /></div>
+              <div className="input-group"><label>여백 (초)</label><input type="number" step="0.01" value={padding} onChange={(e) => setPadding(e.target.value)} /></div>
+              <div className="input-group"><label>목표 LUFS</label><input type="number" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} disabled={preset !== 'custom'} /></div>
               <div className="input-group"><label>트루피크 dB</label><input type="number" step="0.1" value={truePeak} onChange={(e) => setTruePeak(e.target.value)} disabled={preset !== 'custom'} /></div>
-              <div className="input-group flex-row items-center gap-2"><input type="checkbox" checked={limiterEnabled} onChange={(e) => setLimiterEnabled(e.target.checked)} disabled={preset !== 'custom'} /><label>리미터 사용</label></div>
+              <div className="input-group flex-row items-center gap-2" style={{flexDirection: 'row', paddingTop: '1.2rem'}}><input type="checkbox" checked={limiterEnabled} onChange={(e) => setLimiterEnabled(e.target.checked)} disabled={preset !== 'custom'} /><label>리미터</label></div>
             </div>
-            <button className="btn btn-secondary w-full justify-center mt-4" onClick={() => handleProcess(false)} disabled={statusType === 'busy'}>설정 적용 및 미리보기 생성</button>
+            <p className="text-muted text-sm" style={{fontSize: '0.8rem', marginTop: '0.5rem'}}>💡 원본 파형에서 삭제할 구간을 드래그하면 수동 삭제 버튼이 나타납니다. 설정값 변경 시 자동으로 처리됩니다.</p>
           </div>
 
           <div className="card">
-            <h2 className="section-title"><Play size={20} /> 처리된 오디오 파형</h2>
+            <h2 className="section-title"><Play size={20} /> 처리 완료 오디오</h2>
             <div className="waveform-container">
               <div ref={processedWaveformRef} className="waveform-view processed-view"></div>
               <div className="time-display"><span>{processedTime}</span><span>{processedDuration}</span></div>
             </div>
             <div className="waveform-controls">
-              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.playPause()}><Play size={16} /> 재생</button>
-              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()}><Pause size={16} /> 일시정지</button>
-              <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }}><RotateCcw size={16} /> 처음으로</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('in', true)}><ZoomIn size={16} /> 확대</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('out', true)}><ZoomOut size={16} /> 축소</button>
-              <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)}><Maximize size={16} /> 배율 초기화</button>
+              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.playPause()}><Play size={16} /> <span className="btn-text">재생</span></button>
+              <button className="btn btn-secondary" onClick={() => wsProcessed.current?.pause()}><Pause size={16} /> <span className="btn-text">정지</span></button>
+              <button className="btn btn-secondary" onClick={() => { wsProcessed.current?.stop(); wsProcessed.current?.seekTo(0); }}><RotateCcw size={16} /> <span className="btn-text">처음</span></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('in', true)}><ZoomIn size={16} /></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('out', true)}><ZoomOut size={16} /></button>
+              <button className="btn btn-secondary" onClick={() => handleZoom('reset', true)}><Maximize size={16} /></button>
             </div>
           </div>
 
