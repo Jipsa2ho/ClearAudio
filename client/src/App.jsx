@@ -179,19 +179,21 @@ function App() {
 
   // Combined detect + process in one pass (prevents flicker from chained state updates)
   const autoProcessRef = useRef(null);
-  const autoProcessing = useRef(false);
+  const latestRequestId = useRef(0);
 
   const detectAndProcess = async () => {
-    if (!file || autoProcessing.current) return;
-    autoProcessing.current = true;
+    if (!file) return;
+    
+    const currentRequestId = ++latestRequestId.current;
     setStatus('처리 중...');
     setStatusType('busy');
 
     try {
       // Step 1: Detect silence
       const detectRes = await axios.post('/api/detect-silence', {
-        fileId: file.id, silenceThreshold: threshold, minSilenceDuration: minSilence
+        fileId: file.id, threshold, minSilence
       });
+      if (latestRequestId.current !== currentRequestId) return; // Abort if newer request exists
 
       let silenceSegments = [];
       if (detectRes.data.success) {
@@ -212,6 +214,7 @@ function App() {
         fileId: file.id, silenceSegments, manualDeleteRanges: manualDeleteRanges,
         padding, targetLufs, truePeak, limiterEnabled, outputFormat: 'wav', bitrate: '192k'
       });
+      if (latestRequestId.current !== currentRequestId) return; // Abort if newer request exists
 
       if (processRes.data.success) {
         const data = processRes.data;
@@ -228,10 +231,10 @@ function App() {
       setStatus('준비 완료');
       setStatusType('ready');
     } catch (error) {
-      setStatus('처리 오류');
+      if (latestRequestId.current !== currentRequestId) return;
+      console.error(error);
+      setStatus('오류: ' + getKoreanError(error));
       setStatusType('error');
-    } finally {
-      autoProcessing.current = false;
     }
   };
 
@@ -239,7 +242,7 @@ function App() {
   useEffect(() => {
     if (!file || !waveformReady) return;
     if (autoProcessRef.current) clearTimeout(autoProcessRef.current);
-    autoProcessRef.current = setTimeout(() => { detectAndProcess(); }, 600);
+    autoProcessRef.current = setTimeout(() => { detectAndProcess(); }, 400);
     return () => clearTimeout(autoProcessRef.current);
   }, [threshold, minSilence, padding, targetLufs, truePeak, limiterEnabled, preset, waveformReady, manualDeleteRanges]);
 
