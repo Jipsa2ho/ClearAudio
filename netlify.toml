@@ -1,0 +1,22 @@
+[build]
+  # Build command for the frontend
+  command = "npm run build"
+  # The directory where Vite outputs the build
+  publish = "client/dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  # Redirect all frontend routes to index.html for SPA support
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  # Proxy API calls to your backend server
+  # Replace 'https://your-backend-api.com' with your actual backend URL after deployment
+  from = "/api/*"
+  to = "https://your-backend-api.com/api/:splat"
+  status = 200
+  force = true
