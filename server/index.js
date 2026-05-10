@@ -34,6 +34,10 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 app.use('/downloads', express.static(downloadDir));
 
+// Serve React static files (Frontend)
+const clientDistDir = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDistDir));
+
 // --- MULTER CONFIGURATION ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -305,6 +309,11 @@ app.post('/api/export', (req, res) => {
     .on('end', () => res.json({ success: true, filename: finalFilename, downloadUrl: `/downloads/${finalFilename}` }))
     .on('error', (err) => res.status(500).json({ success: false, error: 'Export failed' }))
     .save(finalPath);
+});
+
+// Fallback for React Router (Single Page App)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientDistDir, 'index.html'));
 });
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
